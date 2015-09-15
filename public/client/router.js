@@ -21,9 +21,13 @@ Shortly.Router = Backbone.Router.extend({
 
   logout: function() {
     console.log('logging out');
+
     $.ajax({
       url: 'http://127.0.0.1:4568/logout',
-      method: 'GET'
+      method: 'GET',
+      success: function(data) {
+        window.location = data;
+      }
     });
   },
 

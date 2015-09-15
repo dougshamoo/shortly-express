@@ -31,7 +31,6 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(__dirname + '/public'));
 
 function restrict(req, res, next) {
-
   if (req.session.user) {
     next();
   } else {
@@ -64,24 +63,15 @@ function(req, res) {
  
 app.get('/login',
 function(req, res) { 
-  console.log('called by redirect'); 
   res.render('login');
 });
 
 app.get('/logout',
 function(req, res) {
-  // TODO: end and/or destroy session
-  console.log('server side');
-  console.log(req.session);
   req.session.destroy(function() {
-    console.log(req.session);
-    res.redirect('/login');
+    res.end('http://127.0.0.1:4568/login');
   });
 });
-
-// app.get('/restricted', restrict, function(req, res) {
-
-// });
 
 app.post('/links', 
 function(req, res) {
@@ -126,60 +116,32 @@ function(req, res) {
   
   var username = req.body.username;
   var password = req.body.password;
-  // var salt = bcrypt.genSaltSync(10);
-  // var hash = bcrypt.hashSync(password, salt);
-  var hash = bcrypt.hashSync(password);
-  // create user and hash in db
-  console.log('new username: ', username);
-  console.log('new hash: ', hash);
   var user = new User({
     username: username,
-    password: hash
+    password: password
   });
-  console.log('NEW USER DATA:', username, hash);
   user.save().then(function(newUser) {
     Users.add(newUser);
     
-    console.log('newUser: ', newUser);
-    console.log('users: ', Users);
-    res.redirect('/login');
+    generateSession(req, res, user.attributes.username);
   });
 });
 
+
 app.post('/login',
 function(req, res) {
-  // console.log('users: ', Users);
-  // console.log('links: ', Links);
-  // Users.count().then(function(users) {
-  //   console.log(users);
-  // });
   var username = req.body.username;
   var password = req.body.password;
 
-  // var salt = bcrypt.genSaltSync(10);
-  // var hash = bcrypt.hashSync(password, salt);
   var hash = bcrypt.hashSync(password);
-  
-  
-  // var userObj = db.users.findOne({ username: username, password: hash });
-  // Users.query({where: {username: username, password: hash}})
-
-  console.log('ATTEMPTED LOGIN:', username, hash);
   new User({username: username})
     .fetch()
     .then(function(userObj) {
-      console.log('post login userObj:', userObj);
-      console.log(bcrypt.compareSync(password, userObj.attributes.password));
       if (userObj && bcrypt.compareSync(password, userObj.attributes.password)) {
-        req.session.regenerate(function(){
-          req.session.user = userObj.attributes.username;
-          console.log('req.session: ', req.session);
-          console.log('regenerating and redirecting...');
-          res.redirect('/');
-        });
+        generateSession(req, res, userObj.attributes.username);
       }
       else {
-        res.redirect('login');
+        res.redirect('/login');
       }      
     }); 
 });
@@ -198,7 +160,6 @@ app.get('/*', function(req, res) {
       var click = new Click({
         link_id: link.get('id')
       });
-
       click.save().then(function() {
         db.knex('urls')
           .where('code', '=', link.get('code'))
@@ -211,6 +172,13 @@ app.get('/*', function(req, res) {
     }
   });
 });
+
+var generateSession = function(req, res, username) {
+  req.session.regenerate(function() {
+    req.session.user = username;
+    res.redirect('/');
+  });
+};
 
 console.log('Shortly is listening on 4568');
 app.listen(4568);
