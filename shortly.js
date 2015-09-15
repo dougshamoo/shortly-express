@@ -2,7 +2,8 @@ var express = require('express');
 var util = require('./lib/utility');
 var partials = require('express-partials');
 var bodyParser = require('body-parser');
-
+var expressSession = require('express-session');
+var bcrypt = require('bcrypt-nodejs');
 
 var db = require('./app/config');
 var Users = require('./app/collections/users');
@@ -13,32 +14,74 @@ var Click = require('./app/models/click');
 
 var app = express();
 
+
 app.set('views', __dirname + '/views');
 app.set('view engine', 'ejs');
 app.use(partials());
+app.use(expressSession({
+  secret: 'bacon is delicious',
+  resave: false,
+  saveUninitialized: false
+}));
+
 // Parse JSON (uniform resource locators)
 app.use(bodyParser.json());
 // Parse forms (signup/login)
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(__dirname + '/public'));
 
+function restrict(req, res, next) {
 
-app.get('/', 
+  if (req.session.user) {
+    next();
+  } else {
+    req.session.error = 'Access denied!';
+    res.redirect('/login');
+  }
+}
+
+app.get('/', restrict,
 function(req, res) {
   res.render('index');
 });
 
-app.get('/create', 
+app.get('/create', restrict,
 function(req, res) {
   res.render('index');
 });
 
-app.get('/links', 
+app.get('/links', restrict,
 function(req, res) {
   Links.reset().fetch().then(function(links) {
     res.send(200, links.models);
   });
 });
+
+app.get('/signup',
+function(req, res) {
+  res.render('signup');
+});
+ 
+app.get('/login',
+function(req, res) { 
+  console.log('called by redirect'); 
+  res.render('login');
+});
+
+app.get('/logout',
+function(req, res) {
+  // TODO: end and/or destroy session
+  console.log('server side');
+  console.log(req.session);
+  req.session.destroy(function() {
+    console.log(req.session);
+    res.redirect('/login');
+  });
+});
+
+// app.get('/restricted', restrict, function(req, res) {
+
+// });
 
 app.post('/links', 
 function(req, res) {
@@ -78,7 +121,68 @@ function(req, res) {
 // Write your authentication routes here
 /************************************************************/
 
+app.post('/signup', 
+function(req, res) {
+  
+  var username = req.body.username;
+  var password = req.body.password;
+  // var salt = bcrypt.genSaltSync(10);
+  // var hash = bcrypt.hashSync(password, salt);
+  var hash = bcrypt.hashSync(password);
+  // create user and hash in db
+  console.log('new username: ', username);
+  console.log('new hash: ', hash);
+  var user = new User({
+    username: username,
+    password: hash
+  });
+  console.log('NEW USER DATA:', username, hash);
+  user.save().then(function(newUser) {
+    Users.add(newUser);
+    
+    console.log('newUser: ', newUser);
+    console.log('users: ', Users);
+    res.redirect('/login');
+  });
+});
 
+app.post('/login',
+function(req, res) {
+  // console.log('users: ', Users);
+  // console.log('links: ', Links);
+  // Users.count().then(function(users) {
+  //   console.log(users);
+  // });
+  var username = req.body.username;
+  var password = req.body.password;
+
+  // var salt = bcrypt.genSaltSync(10);
+  // var hash = bcrypt.hashSync(password, salt);
+  var hash = bcrypt.hashSync(password);
+  
+  
+  // var userObj = db.users.findOne({ username: username, password: hash });
+  // Users.query({where: {username: username, password: hash}})
+
+  console.log('ATTEMPTED LOGIN:', username, hash);
+  new User({username: username})
+    .fetch()
+    .then(function(userObj) {
+      console.log('post login userObj:', userObj);
+      console.log(bcrypt.compareSync(password, userObj.attributes.password));
+      if (userObj && bcrypt.compareSync(password, userObj.attributes.password)) {
+        req.session.regenerate(function(){
+          req.session.user = userObj.attributes.username;
+          console.log('req.session: ', req.session);
+          console.log('regenerating and redirecting...');
+          res.redirect('/');
+        });
+      }
+      else {
+        res.redirect('login');
+      }      
+    }); 
+});
 
 /************************************************************/
 // Handle the wildcard route last - if all other routes fail
